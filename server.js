@@ -11,7 +11,8 @@ dotenv.config();
 const atlas = {
     user: process.env.USER,
     pass: process.env.PASS,
-    db: process.env.DB
+    db: process.env.DB,
+    cluster: process.env.CLUSTER
 };
 
 mongoose.set('strictQuery', true);
