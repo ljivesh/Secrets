@@ -2,6 +2,7 @@ const express = require('express');
 const ejs = require('ejs');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(express.urlencoded({extended: true}));
@@ -14,16 +15,20 @@ const atlas = {
     db: process.env.DB,
     cluster: process.env.CLUSTER
 };
+const saltRounds = 10;
 
 mongoose.set('strictQuery', true);
 const uri = `mongodb+srv://${atlas.user}:${atlas.pass}@${atlas.cluster}.jdavibi.mongodb.net/${atlas.db}?retryWrites=true&w=majority`;
 mongoose.connect(uri);
 
-const userSchema = {
+const userSchema = new mongoose.Schema({
     username: String,
     password: String,
     secrets: []
-};
+});
+
+// const secretKey = process.env.SECRET_KEY;
+// userSchema.plugin(encrypt, { secret: secretKey, encryptedFields: ['password'] });
 const User = mongoose.model('user', userSchema);
 
 var activeUser = "__no_active_user__";
@@ -51,12 +56,18 @@ app.route('/login')
             password: req.body.password
         }
         
-        User.findOne(userCreds, (err, foundUser)=> {
+        User.findOne({username: userCreds.username}, (err, foundUser)=> {
             if(err) console.log(err);
             else if(!foundUser) res.send("User not Found");
             else {
-                activeUser = foundUser.username;
-                res.render('secrets', {username: foundUser.username, secrets: foundUser.secrets});
+                bcrypt.compare(userCreds.password, foundUser.password, function(err, result) {
+                    // result == true
+                    if(result==true) {
+                        activeUser = foundUser.username;
+                        res.render('secrets', {username: foundUser.username, secrets: foundUser.secrets});
+                    }
+                    else res.send("Incorrect Password");
+                });
             }
         });
     });
@@ -71,20 +82,30 @@ app.route('/register')
     .get((req,res)=> res.render('register'))
     .post((req, res)=> {
 
-        const userCreds = {
-            username: req.body.username,
-            password: req.body.password,
-            secrets: []
-        }
 
-        const user = new User(userCreds);
-        user.save((err)=> {
+
+        bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+            // Store hash in your password DB.
             if(err) res.send(err);
             else {
-                activeUser = userCreds.username;
-                res.render('submit');
+
+                const userCreds = {
+                    username: req.body.username,
+                    password: hash,
+                    secrets: []
+                }
+
+                const user = new User(userCreds);
+                user.save((err)=> {
+                    if(err) res.send(err);
+                    else {
+                        activeUser = userCreds.username;
+                        res.render('submit');
+                    }
+                });
             }
         });
+
     });
 
 app.route('/submit')
